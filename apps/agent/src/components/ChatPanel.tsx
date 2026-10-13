@@ -1,4 +1,13 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { DeviceState, SensorState, SessionSnapshot } from '@dg-agent/core';
 import type { OpossumState } from '@dg-kit/protocol';
 import { savedPromptKind, type SavedScene } from '@0xnullai/scenes';
@@ -108,6 +117,7 @@ interface ChatPanelProps {
 }
 
 const MESSAGE_BATCH_SIZE = 120;
+const NO_ATTACHMENTS: PrivateConversationAttachment[] = [];
 
 // Bluetooth pairing hint: the browser's native chooser takes no injected copy, so this
 // stays on screen while disconnected and doubles as the Bluetooth button's title, to
@@ -201,7 +211,10 @@ export function ChatPanel({
     owner: string;
     items: PrivateConversationAttachment[];
   } | null>(null);
-  const attachments = attachmentState?.owner === mediaOwner ? attachmentState.items : [];
+  const attachments = useMemo(
+    () => (attachmentState?.owner === mediaOwner ? attachmentState.items : NO_ATTACHMENTS),
+    [attachmentState, mediaOwner],
+  );
   const [attachmentErrorState, setAttachmentErrorState] = useState<{
     owner: string;
     message: string;
@@ -225,24 +238,43 @@ export function ChatPanel({
   const pendingVoice = pendingVoiceState?.owner === mediaOwner ? pendingVoiceState : null;
   const recorderRef = useRef<MediaRecorder | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const timelineItems = buildRenderableTimeline(
-    {
-      accountId: accountId ?? '',
-      conversationId: sessionId ?? activeSessionId ?? '',
-      agentId: promptPresetId,
-      agentName: savedPresets.find((preset) => preset.id === hostPresetId)?.name ?? 'AI',
-    },
-    messages,
-    traceFeed,
-    mediaJobs,
-    attachments,
+  const agentName = savedPresets.find((preset) => preset.id === hostPresetId)?.name ?? 'AI';
+  const conversationId = sessionId ?? activeSessionId ?? '';
+  const timelineItems = useMemo(
+    () =>
+      buildRenderableTimeline(
+        { accountId: accountId ?? '', conversationId, agentId: promptPresetId, agentName },
+        messages,
+        traceFeed,
+        mediaJobs,
+        attachments,
+        session?.historyWindow?.nextBefore != null,
+      ),
+    [
+      accountId,
+      conversationId,
+      promptPresetId,
+      agentName,
+      messages,
+      traceFeed,
+      mediaJobs,
+      attachments,
+      session?.historyWindow?.nextBefore,
+    ],
   );
   const [visibleMessageCount, setVisibleMessageCount] = useState(MESSAGE_BATCH_SIZE);
   const [olderLoading, setOlderLoading] = useState(false);
   const [olderError, setOlderError] = useState(false);
-  const renderedMessages = timelineItems.slice(-visibleMessageCount);
-  const sequence = conversationSequence(
-    renderedMessages.map((item) => ({ sender: timelineSender(item), at: item.createdAt })),
+  const renderedMessages = useMemo(
+    () => timelineItems.slice(-visibleMessageCount),
+    [timelineItems, visibleMessageCount],
+  );
+  const sequence = useMemo(
+    () =>
+      conversationSequence(
+        renderedMessages.map((item) => ({ sender: timelineSender(item), at: item.createdAt })),
+      ),
+    [renderedMessages],
   );
   const arrivals = useConversationArrivals(
     renderedMessages.map((item) => item.id),
@@ -522,17 +554,44 @@ export function ChatPanel({
 
   const inShell = useInShell();
   const showVoiceAsPrimary = !hasText && !busy;
-  const assistantAvatar = (
-    <AssistantAvatar
-      name={activeHost?.name ?? 'AI'}
-      icon={activeHost?.icon}
-      marketPortraitId={activeHost?.marketPortraitId}
-      relationshipId={
-        typeof session?.metadata?.relationshipId === 'string'
-          ? session.metadata.relationshipId
-          : null
-      }
-    />
+  const hostName = activeHost?.name ?? 'AI';
+  const hostIcon = activeHost?.icon;
+  const hostPortraitId = activeHost?.marketPortraitId;
+  const relationshipId =
+    typeof session?.metadata?.relationshipId === 'string' ? session.metadata.relationshipId : null;
+  const assistantAvatar = useMemo(
+    () => (
+      <AssistantAvatar
+        name={hostName}
+        icon={hostIcon}
+        marketPortraitId={hostPortraitId}
+        relationshipId={relationshipId}
+      />
+    ),
+    [hostName, hostIcon, hostPortraitId, relationshipId],
+  );
+  // Row actions keep one identity for the panel's lifetime and read the latest props, so the
+  // memoized rows are not re-rendered by the parent's fresh inline callbacks.
+  const latestRef = useRef({ onAskImage, onReplyToVoice, onTextChange, text });
+  useLayoutEffect(() => {
+    latestRef.current = { onAskImage, onReplyToVoice, onTextChange, text };
+  });
+  const askImage = useCallback(
+    (attachment: PrivateConversationAttachment) => latestRef.current.onAskImage(attachment),
+    [],
+  );
+  const replyToVoice = useCallback(
+    (attachment: PrivateConversationAttachment) => latestRef.current.onReplyToVoice?.(attachment),
+    [],
+  );
+  const useVoiceDraft = useCallback((draft: string) => {
+    const { text: current, onTextChange: change } = latestRef.current;
+    change(current.trim() ? `${current}\n${draft}` : draft);
+  }, []);
+  const canReplyToVoice = Boolean(onReplyToVoice);
+  const rowActions = useMemo<TimelineRowActions>(
+    () => ({ askImage, replyToVoice: canReplyToVoice ? replyToVoice : undefined, useVoiceDraft }),
+    [askImage, canReplyToVoice, replyToVoice, useVoiceDraft],
   );
 
   return (
@@ -751,181 +810,21 @@ export function ChatPanel({
                 </div>
               )}
 
-            {renderedMessages.map((message, index) => {
-              const position = sequence[index]!;
-              const arrived = arrivals.has(message.id);
-              const time = position.showTime ? (
-                <ConversationTimeSeparator at={message.createdAt} />
-              ) : null;
-              if (message.kind === 'attachment') {
-                return (
-                  <Fragment key={message.id}>
-                    {time}
-                    <ConversationMessageRow
-                      own
-                      continued={position.continued}
-                      groupEnd={position.groupEnd}
-                      arrived={arrived}
-                    >
-                      <div className={bubbleUser(position.continued)}>
-                        <PrivateAttachmentPreview
-                          accountId={accountId!}
-                          conversationId={sessionId!}
-                          attachment={message.attachment}
-                        />
-                        {message.attachment.kind === 'voice' && message.attachment.caption && (
-                          <p className="mt-2 text-sm">{message.attachment.caption}</p>
-                        )}
-                        <p className="mt-1 text-xs opacity-75">
-                          {message.attachment.kind === 'image'
-                            ? '图片已保存 · 仅在明确请求时交给 AI'
-                            : message.attachment.caption
-                              ? '用户附上的文字可供 AI 阅读；录音尚未自动转写'
-                              : '语音已保存 · AI 尚未读取此附件'}
-                        </p>
-                        {message.attachment.kind === 'image' && imageInputSupported && (
-                          <button
-                            type="button"
-                            className="mt-1 block text-xs underline disabled:opacity-50"
-                            disabled={busy || attachmentBusy}
-                            onClick={() => onAskImage(message.attachment)}
-                          >
-                            让 AI 看图
-                          </button>
-                        )}
-                        {message.attachment.kind === 'voice' &&
-                          message.attachment.caption &&
-                          onReplyToVoice && (
-                            <button
-                              type="button"
-                              className="mt-1 block text-xs underline disabled:opacity-50"
-                              disabled={busy || attachmentBusy}
-                              onClick={() => onReplyToVoice(message.attachment)}
-                            >
-                              请 AI 回应文字
-                            </button>
-                          )}
-                        {message.attachment.kind === 'voice' && accountId && sessionId && (
-                          <VoiceTranscriptionControl
-                            accountId={accountId}
-                            conversationId={sessionId}
-                            attachmentId={message.attachment.id}
-                            onUseText={(draft) =>
-                              onTextChange(text.trim() ? `${text}\n${draft}` : draft)
-                            }
-                          />
-                        )}
-                      </div>
-                    </ConversationMessageRow>
-                  </Fragment>
-                );
-              }
-              if (message.kind === 'media') {
-                const job = message.job;
-                return (
-                  <Fragment key={message.id}>
-                    {time}
-                    <ConversationMessageRow
-                      own={false}
-                      continued={position.continued}
-                      groupEnd={position.groupEnd}
-                      arrived={arrived}
-                      avatar={assistantAvatar}
-                    >
-                      <div className={bubbleAssistant(position.continued)}>
-                        <p className="text-sm font-medium">
-                          {mediaKindName[job.kind]}
-                          {' · '}
-                          {job.state === 'succeeded'
-                            ? '已完成'
-                            : job.state === 'needs_review'
-                              ? '账务待核对'
-                              : job.state === 'failed'
-                                ? '失败'
-                                : job.state === 'submission_unknown'
-                                  ? '结果待核对'
-                                  : '处理中'}
-                        </p>
-                        <p className="mt-1 text-sm">{job.prompt}</p>
-                        {job.state === 'succeeded' && <MediaJobPreview job={job} />}
-                        {job.state !== 'succeeded' && job.lastError && (
-                          <p className="mt-1 text-xs text-[var(--text-soft)]">{job.lastError}</p>
-                        )}
-                      </div>
-                    </ConversationMessageRow>
-                  </Fragment>
-                );
-              }
-              if (message.kind === 'trace-system') {
-                return (
-                  <Fragment key={message.id}>
-                    {time}
-                    <ConversationSystemRow className={arrived ? 'ui-fade-up' : undefined}>
-                      {message.content}
-                    </ConversationSystemRow>
-                  </Fragment>
-                );
-              }
-              if (message.kind === 'camera_observation') {
-                return (
-                  <Fragment key={message.id}>
-                    {time}
-                    <ConversationSystemRow className={arrived ? 'ui-fade-up' : undefined}>
-                      <span className="font-medium">摄像头观察</span>
-                      <span className="ml-2">{message.content}</span>
-                    </ConversationSystemRow>
-                  </Fragment>
-                );
-              }
-              const systemText =
-                message.role === 'assistant' &&
-                message.content.startsWith('Fake LLM 已完成工具执行：')
-                  ? '旧版模型文字未核验工具执行，请查看设备状态。'
-                  : message.role === 'system'
-                    ? message.content
-                    : null;
-              if (systemText !== null) {
-                return (
-                  <Fragment key={message.id}>
-                    {time}
-                    <ConversationSystemRow className={arrived ? 'ui-fade-up' : undefined}>
-                      {systemText}
-                    </ConversationSystemRow>
-                  </Fragment>
-                );
-              }
-
-              const userMessage = message.role === 'user';
-              return (
-                <Fragment key={message.id}>
-                  {time}
-                  <ConversationMessageRow
-                    own={userMessage}
-                    continued={position.continued}
-                    groupEnd={position.groupEnd}
-                    arrived={arrived}
-                    avatar={userMessage ? undefined : assistantAvatar}
-                  >
-                    <div
-                      className={
-                        userMessage
-                          ? bubbleUser(position.continued)
-                          : bubbleAssistant(position.continued)
-                      }
-                    >
-                      {userMessage ? (
-                        message.content
-                      ) : (
-                        <ScheduledMessageBody content={message.content} />
-                      )}
-                    </div>
-                    {message.status === 'pending' && userMessage && (
-                      <p className="mt-0.5 px-1 text-[11px] text-[var(--text-faint)]">正在同步…</p>
-                    )}
-                  </ConversationMessageRow>
-                </Fragment>
-              );
-            })}
+            {renderedMessages.map((message, index) => (
+              <TimelineRow
+                key={message.id}
+                message={message}
+                position={sequence[index]!}
+                arrived={arrivals.has(message.id)}
+                assistantAvatar={assistantAvatar}
+                accountId={accountId}
+                sessionId={sessionId}
+                busy={busy}
+                attachmentBusy={attachmentBusy}
+                imageInputSupported={imageInputSupported}
+                actions={rowActions}
+              />
+            ))}
 
             {streamingAssistantText && (
               <ConversationMessageRow own={false} arrived avatar={assistantAvatar}>
@@ -1175,6 +1074,201 @@ export function ChatPanel({
   );
 }
 
+interface TimelineRowActions {
+  askImage: (attachment: PrivateConversationAttachment) => void;
+  replyToVoice?: (attachment: PrivateConversationAttachment) => void;
+  useVoiceDraft: (draft: string) => void;
+}
+
+/**
+ * One timeline row. Memoized with stable actions, so typing, a streaming delta or a device
+ * reading re-renders the composer, not every message (and every avatar) in the window.
+ */
+const TimelineRow = memo(function TimelineRow({
+  message,
+  position,
+  arrived,
+  assistantAvatar,
+  accountId,
+  sessionId,
+  busy,
+  attachmentBusy,
+  imageInputSupported,
+  actions,
+}: {
+  message: TimelineItem;
+  position: ReturnType<typeof conversationSequence>[number];
+  arrived: boolean;
+  assistantAvatar: ReactNode;
+  accountId: string | null;
+  sessionId: string | undefined;
+  busy: boolean;
+  attachmentBusy: boolean;
+  imageInputSupported: boolean;
+  actions: TimelineRowActions;
+}) {
+  const time = position.showTime ? <ConversationTimeSeparator at={message.createdAt} /> : null;
+  if (message.kind === 'attachment') {
+    return (
+      <>
+        {time}
+        <ConversationMessageRow
+          own
+          continued={position.continued}
+          groupEnd={position.groupEnd}
+          arrived={arrived}
+        >
+          <div className={bubbleUser(position.continued)}>
+            <PrivateAttachmentPreview
+              accountId={accountId!}
+              conversationId={sessionId!}
+              attachment={message.attachment}
+            />
+            {message.attachment.kind === 'voice' && message.attachment.caption && (
+              <p className="mt-2 text-sm">{message.attachment.caption}</p>
+            )}
+            <p className="mt-1 text-xs opacity-75">
+              {message.attachment.kind === 'image'
+                ? '图片已保存 · 仅在明确请求时交给 AI'
+                : message.attachment.caption
+                  ? '用户附上的文字可供 AI 阅读；录音尚未自动转写'
+                  : '语音已保存 · AI 尚未读取此附件'}
+            </p>
+            {message.attachment.kind === 'image' && imageInputSupported && (
+              <button
+                type="button"
+                className="mt-1 block text-xs underline disabled:opacity-50"
+                disabled={busy || attachmentBusy}
+                onClick={() => actions.askImage(message.attachment)}
+              >
+                让 AI 看图
+              </button>
+            )}
+            {message.attachment.kind === 'voice' &&
+              message.attachment.caption &&
+              actions.replyToVoice && (
+                <button
+                  type="button"
+                  className="mt-1 block text-xs underline disabled:opacity-50"
+                  disabled={busy || attachmentBusy}
+                  onClick={() => actions.replyToVoice?.(message.attachment)}
+                >
+                  请 AI 回应文字
+                </button>
+              )}
+            {message.attachment.kind === 'voice' && accountId && sessionId && (
+              <VoiceTranscriptionControl
+                accountId={accountId}
+                conversationId={sessionId}
+                attachmentId={message.attachment.id}
+                onUseText={actions.useVoiceDraft}
+              />
+            )}
+          </div>
+        </ConversationMessageRow>
+      </>
+    );
+  }
+  if (message.kind === 'media') {
+    const job = message.job;
+    return (
+      <>
+        {time}
+        <ConversationMessageRow
+          own={false}
+          continued={position.continued}
+          groupEnd={position.groupEnd}
+          arrived={arrived}
+          avatar={assistantAvatar}
+        >
+          <div className={bubbleAssistant(position.continued)}>
+            <p className="text-sm font-medium">
+              {mediaKindName[job.kind]}
+              {' · '}
+              {job.state === 'succeeded'
+                ? '已完成'
+                : job.state === 'needs_review'
+                  ? '账务待核对'
+                  : job.state === 'failed'
+                    ? '失败'
+                    : job.state === 'submission_unknown'
+                      ? '结果待核对'
+                      : '处理中'}
+            </p>
+            <p className="mt-1 text-sm">{job.prompt}</p>
+            {job.state === 'succeeded' && <MediaJobPreview job={job} />}
+            {job.state !== 'succeeded' && job.lastError && (
+              <p className="mt-1 text-xs text-[var(--text-soft)]">{job.lastError}</p>
+            )}
+          </div>
+        </ConversationMessageRow>
+      </>
+    );
+  }
+  if (message.kind === 'trace-system') {
+    return (
+      <>
+        {time}
+        <ConversationSystemRow className={arrived ? 'ui-fade-up' : undefined}>
+          {message.content}
+        </ConversationSystemRow>
+      </>
+    );
+  }
+  if (message.kind === 'camera_observation') {
+    return (
+      <>
+        {time}
+        <ConversationSystemRow className={arrived ? 'ui-fade-up' : undefined}>
+          <span className="font-medium">摄像头观察</span>
+          <span className="ml-2">{message.content}</span>
+        </ConversationSystemRow>
+      </>
+    );
+  }
+  const systemText =
+    message.role === 'assistant' && message.content.startsWith('Fake LLM 已完成工具执行：')
+      ? '旧版模型文字未核验工具执行，请查看设备状态。'
+      : message.role === 'system'
+        ? message.content
+        : null;
+  if (systemText !== null) {
+    return (
+      <>
+        {time}
+        <ConversationSystemRow className={arrived ? 'ui-fade-up' : undefined}>
+          {systemText}
+        </ConversationSystemRow>
+      </>
+    );
+  }
+
+  const userMessage = message.role === 'user';
+  return (
+    <>
+      {time}
+      <ConversationMessageRow
+        own={userMessage}
+        continued={position.continued}
+        groupEnd={position.groupEnd}
+        arrived={arrived}
+        avatar={userMessage ? undefined : assistantAvatar}
+      >
+        <div
+          className={
+            userMessage ? bubbleUser(position.continued) : bubbleAssistant(position.continued)
+          }
+        >
+          {userMessage ? message.content : <ScheduledMessageBody content={message.content} />}
+        </div>
+        {message.status === 'pending' && userMessage && (
+          <p className="mt-0.5 px-1 text-[11px] text-[var(--text-faint)]">正在同步…</p>
+        )}
+      </ConversationMessageRow>
+    </>
+  );
+});
+
 type TimelineItem =
   | (Omit<SessionSnapshot['messages'][number], 'kind'> & {
       kind: 'message' | 'camera_observation';
@@ -1189,17 +1283,38 @@ type TimelineItem =
       createdAt: number;
     };
 
-function buildRenderableTimeline(
+export function buildRenderableTimeline(
   identity: { accountId: string; conversationId: string; agentId: string; agentName: string },
   messages: SessionSnapshot['messages'],
   traceFeed: TraceFeedItem[],
   mediaJobs: MediaJob[],
   attachments: PrivateConversationAttachment[],
+  hasOlderHistory = false,
 ): TimelineItem[] {
-  const projection = adaptPrivateAiTimeline({ ...identity, messages, attachments });
+  const loadedIds = new Set(messages.map((message) => message.id));
+  // The conversation's attachment and media lists are complete, but only a window of its
+  // messages is loaded. Anything older than that window belongs to a page not loaded yet;
+  // drawing it here would pile it on top of the window.
+  const windowStart = hasOlderHistory
+    ? messages.reduce((oldest, message) => Math.min(oldest, message.createdAt), Infinity)
+    : -Infinity;
+  const inWindow = (createdAt: number, messageId?: string | null) =>
+    createdAt >= windowStart || (!!messageId && loadedIds.has(messageId));
+  const windowAttachments = hasOlderHistory
+    ? attachments.filter((attachment) => inWindow(attachment.createdAt, attachment.messageId))
+    : attachments;
+  const windowMedia = hasOlderHistory
+    ? mediaJobs.filter((job) => inWindow(job.createdAt))
+    : mediaJobs;
+  const attachmentMessageIds = new Set(windowAttachments.map((item) => item.messageId));
+  const projection = adaptPrivateAiTimeline({
+    ...identity,
+    messages,
+    attachments: windowAttachments,
+  });
   const projectedById = new Map(projection.map((item) => [item.itemId, item]));
   const visibleMessages: TimelineItem[] = messages
-    .filter((message) => !attachments.some((item) => item.messageId === message.id))
+    .filter((message) => !attachmentMessageIds.has(message.id))
     .filter(shouldRenderTimelineMessage)
     .map((message) => ({
       ...message,
@@ -1216,31 +1331,36 @@ function buildRenderableTimeline(
       content: item.text,
       createdAt: item.createdAt,
     })),
-    ...mediaJobs.map((job) => ({
+    ...windowMedia.map((job) => ({
       kind: 'media' as const,
       id: `media:${job.id}`,
       job,
       createdAt: job.createdAt,
     })),
-    ...attachments.map((attachment) => ({
+    ...windowAttachments.map((attachment) => ({
       kind: 'attachment' as const,
       id: `attachment:${attachment.id}`,
       attachment,
       createdAt: attachment.createdAt,
     })),
-  ];
+  ].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
   // Server message array order is authoritative even if an old client clock was wrong.
-  // Auxiliary records have no conversation sequence yet; insert them at a stable boundary.
+  // Auxiliary records have no conversation sequence yet; each goes right after the last
+  // message (in server order) not newer than it. That position only grows with time, so one
+  // pass over the messages sorted by time serves every extra.
+  const indexById = new Map(visibleMessages.map((message, index) => [message.id, index]));
+  const byTime = visibleMessages
+    .map((message, index) => ({ at: message.createdAt, index }))
+    .sort((a, b) => a.at - b.at);
   const buckets: TimelineItem[][] = Array.from({ length: visibleMessages.length + 1 }, () => []);
-  for (const extra of extras.sort(
-    (a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id),
-  )) {
+  let cursor = 0;
+  let lastAtOrBefore = -1;
+  for (const extra of extras) {
+    while (cursor < byTime.length && byTime[cursor]!.at <= extra.createdAt)
+      lastAtOrBefore = Math.max(lastAtOrBefore, byTime[cursor++]!.index);
     const messageId = extra.kind === 'attachment' ? extra.attachment.messageId : null;
-    let after = messageId ? visibleMessages.findIndex((message) => message.id === messageId) : -1;
-    if (after < 0)
-      for (const [index, message] of visibleMessages.entries())
-        if (message.createdAt <= extra.createdAt) after = index;
-    buckets[after + 1]!.push(extra);
+    const linked = messageId ? indexById.get(messageId) : undefined;
+    buckets[(linked ?? lastAtOrBefore) + 1]!.push(extra);
   }
   return visibleMessages
     .flatMap((message, index) => [...buckets[index]!, message])
