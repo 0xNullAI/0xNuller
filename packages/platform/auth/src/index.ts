@@ -82,14 +82,39 @@ export interface AuthUser {
 /** Android stores the token here; empty on the web, which relies on cookies. */
 const TOKEN_KEY = '0xnullai.auth-token';
 let currentUserId: string | null = null;
+let currentUserRecord: string | null = null;
 const AUTH_CHANGED_EVENT = '0xnullai:auth-changed';
+const AUTH_USER_UPDATED_EVENT = '0xnullai:auth-user-updated';
 const beforeLogout = new Set<() => Promise<void> | void>();
 const BEFORE_LOGOUT_TIMEOUT_MS = 3_000;
 
+/**
+ * Announce the signed-in account, split by what actually changed.
+ *
+ * `me()` runs on every shell load, on every profile save and on retries, and it
+ * used to announce an account change each time. Listeners treat that event as
+ * "a different person is here now": the inbox dropped its search and pages, the
+ * Market list emptied, waveform sync restarted, open editors closed — all for
+ * the same account re-reading its own record.
+ *
+ * So the account event fires only when the identity changes. Sign-out (null)
+ * is always announced, even when nothing was signed in, because dropping
+ * account-scoped state is idempotent and missing a sign-out is not. A changed
+ * record for the same account (name, avatar, email verification) goes out as a
+ * separate user-updated event for the few views that show those fields.
+ */
 function publishAuthUser(user: AuthUser | null): void {
-  currentUserId = user?.id ?? null;
-  if (typeof window !== 'undefined') {
+  const nextId = user?.id ?? null;
+  const nextRecord = user ? JSON.stringify(user) : null;
+  const identityChanged = nextId !== currentUserId;
+  const recordChanged = nextRecord !== currentUserRecord;
+  currentUserId = nextId;
+  currentUserRecord = nextRecord;
+  if (typeof window === 'undefined') return;
+  if (identityChanged || !user) {
     window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: user }));
+  } else if (recordChanged) {
+    window.dispatchEvent(new CustomEvent(AUTH_USER_UPDATED_EVENT, { detail: user }));
   }
 }
 
@@ -98,10 +123,22 @@ export function currentAuthUserId(): string | null {
   return currentUserId;
 }
 
+/** Fires when the signed-in identity changes, and on every sign-out. Not on a profile edit. */
 export function subscribeAuthChanges(listener: (user: AuthUser | null) => void): () => void {
   const handler = (event: Event) => listener((event as CustomEvent<AuthUser | null>).detail);
   window.addEventListener(AUTH_CHANGED_EVENT, handler);
   return () => window.removeEventListener(AUTH_CHANGED_EVENT, handler);
+}
+
+/**
+ * Fires when the same signed-in account's record changes (display name, avatar,
+ * email verification). Views that show those fields listen here as well as to
+ * subscribeAuthChanges; account-scoped state must not reset on it.
+ */
+export function subscribeAuthUserUpdates(listener: (user: AuthUser) => void): () => void {
+  const handler = (event: Event) => listener((event as CustomEvent<AuthUser>).detail);
+  window.addEventListener(AUTH_USER_UPDATED_EVENT, handler);
+  return () => window.removeEventListener(AUTH_USER_UPDATED_EVENT, handler);
 }
 
 /** Native integrations can revoke account-bound registrations while credentials still exist. */

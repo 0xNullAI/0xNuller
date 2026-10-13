@@ -126,6 +126,7 @@ vi.mock('@0xnullai/auth', () => ({
   // profile, so an unsubscribe that does nothing is the whole stub.
   subscribeProfileRequests: () => () => undefined,
   subscribeProfileChanges: () => () => undefined,
+  subscribeAuthUserUpdates: () => () => undefined,
   subscribeAuthChanges: (listener: (user: unknown) => void) => {
     authState.authListeners.add(listener);
     return () => authState.authListeners.delete(listener);

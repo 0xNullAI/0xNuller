@@ -22,6 +22,7 @@ import {
   me,
   getCreditBalance,
   subscribeAuthChanges,
+  subscribeAuthUserUpdates,
   subscribeProfileChanges,
   subscribeProfileRequests,
   type AuthUser,
@@ -208,7 +209,12 @@ export function Shell() {
   // modules see the same value.
   useTheme();
 
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUserState] = useState<AuthUser | null>(null);
+  // me() hands back a fresh object on every call. Keep the previous one when nothing in it
+  // changed, so a re-read of the same account does not re-run every effect keyed on `user`.
+  const setUser = useCallback((next: AuthUser | null) => {
+    setUserState((prev) => (sameAuthUser(prev, next) ? prev : next));
+  }, []);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [authUnavailable, setAuthUnavailable] = useState(false);
@@ -244,7 +250,7 @@ export function Shell() {
         setAuthChecked(true);
       })
       .catch(() => setAuthUnavailable(true));
-  }, []);
+  }, [setUser]);
 
   useEffect(loadAuth, [loadAuth]);
 
@@ -271,7 +277,7 @@ export function Shell() {
           .then(setUser)
           .catch(() => undefined);
       }),
-    [],
+    [setUser],
   );
 
   // An expired or revoked session (a 401 on any account request) signs this tab out.
@@ -279,6 +285,15 @@ export function Shell() {
     () =>
       subscribeAuthChanges((current) => {
         if (!current) setUser(null);
+      }),
+    [setUser],
+  );
+
+  // Another surface re-read this account (verified the email, changed the avatar): show it.
+  useEffect(
+    () =>
+      subscribeAuthUserUpdates((updated) => {
+        setUserState((prev) => (prev?.id === updated.id ? updated : prev));
       }),
     [],
   );
@@ -648,6 +663,12 @@ export function Shell() {
       </ShellNavProvider>
     </ModuleSettingsProvider>
   );
+}
+
+function sameAuthUser(a: AuthUser | null, b: AuthUser | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function PageLoading({ label }: { label: string }) {
