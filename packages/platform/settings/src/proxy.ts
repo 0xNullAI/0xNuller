@@ -1,39 +1,25 @@
 /**
  * Global proxy settings.
  *
- * One limitation that must be stated plainly: the web build cannot do
- * SOCKS. Browsers do not let a page pick its own proxy — that is an OS or
- * browser-level setting, and page JavaScript has no such capability. Giving
- * the web build a SOCKS toggle means shipping a control that looks usable
- * and never takes effect, which is worse than not having it.
+ * A page cannot choose its own proxy: SOCKS or a system proxy is an OS or browser setting, and
+ * neither the web build nor the Android WebView can set one from JavaScript. The only proxy this
+ * app offers is an HTTP reverse-proxy base URL: requests are rewritten to go through it and the
+ * proxy forwards them upstream.
  *
- * Hence the split:
- * - HTTP reverse-proxy base URL: works in both web and the Tauri shell.
- *   Point requests at your own reverse proxy and let it forward. This is
- *   the only viable "use a proxy" path on the web.
- * - SOCKS / system proxy: Tauri shell only (its native HTTP client can be
- *   configured with a proxy). Ignored on the web; the UI must say so.
- *
- * `runtime` is injected by the host: 'web' for the web build, 'tauri' for
- * the shell. It decides which items actually apply, instead of making the
- * user guess.
+ * The Android shell only lets https (and wss) traffic out: its release CSP allows no other
+ * remote scheme and cleartext traffic is disabled. A plain http proxy or custom model endpoint
+ * would be blocked there, so the shell accepts https addresses only.
  */
-
-export type ProxyRuntime = 'web' | 'tauri';
 
 export interface ProxySettings {
   /** Master switch. When off, everything connects directly. */
   enabled: boolean;
   /**
    * HTTP reverse-proxy base URL (with scheme and port), e.g.
-   * `http://127.0.0.1:8080`. Empty = do not rewrite request URLs. Applies
-   * in both runtimes.
+   * `http://127.0.0.1:8080`. Empty = do not rewrite request URLs. https only in the
+   * Android shell.
    */
   httpBaseUrl: string;
-  /**
-   * SOCKS proxy, e.g. `socks5://127.0.0.1:1080`.
-   * Tauri shell only — ignored on the web.
-   */
 }
 
 export const DEFAULT_PROXY: ProxySettings = {
@@ -98,6 +84,25 @@ export function subscribeProxy(listener: (s: ProxySettings) => void): () => void
   };
 }
 
+/** True in the Android (Tauri) shell, whose CSP and cleartext ban block plain http. */
+export function onlyHttpsEndpointsAllowed(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+/** Whether a proxy or custom endpoint address can actually be reached from this runtime. */
+export function isUsableEndpointUrl(
+  value: string,
+  httpsOnly: boolean = onlyHttpsEndpointsAllowed(),
+): boolean {
+  try {
+    const url = new URL(value.trim());
+    if (!url.host) return false;
+    return url.protocol === 'https:' || (!httpsOnly && url.protocol === 'http:');
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Rewrite an upstream URL to go through the reverse proxy.
  *
@@ -105,15 +110,6 @@ export function subscribeProxy(listener: (s: ProxySettings) => void): () => void
  * broken proxy config should look like "proxy not used", never like
  * requests going to a mistyped destination.
  */
-export function isValidHttpProxyBaseUrl(value: string): boolean {
-  try {
-    const url = new URL(value.trim());
-    return (url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.host);
-  } catch {
-    return false;
-  }
-}
-
 export function applyHttpProxy(url: string, proxy: ProxySettings = loadProxy()): string {
   return applyReverseProxy(url, proxy, 'http');
 }
@@ -128,7 +124,7 @@ function applyReverseProxy(
   proxy: ProxySettings,
   transport: 'http' | 'websocket',
 ): string {
-  if (!proxy.enabled || !isValidHttpProxyBaseUrl(proxy.httpBaseUrl)) return url;
+  if (!proxy.enabled || !isUsableEndpointUrl(proxy.httpBaseUrl)) return url;
   try {
     const base = new URL(proxy.httpBaseUrl.trim());
     const target = new URL(url);
@@ -152,16 +148,4 @@ function applyReverseProxy(
   } catch {
     return url;
   }
-}
-
-/**
- * Detect the current runtime.
- *
- * Tauri injects `__TAURI_INTERNALS__` on window. When not detected, treat
- * as web — a wrong guess in this direction merely shows SOCKS as
- * "unavailable", which is safer than the opposite.
- */
-export function detectProxyRuntime(): ProxyRuntime {
-  if (typeof window === 'undefined') return 'web';
-  return '__TAURI_INTERNALS__' in window ? 'tauri' : 'web';
 }

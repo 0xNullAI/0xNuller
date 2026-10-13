@@ -104,15 +104,20 @@ export function ControlPanel({
   isDm = false,
 }: ControlPanelProps) {
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copyResult, setCopyResult] = useState<'copied' | 'failed' | null>(null);
   const [nameDraft, setNameDraft] = useState(roomName);
 
   function copyRoomId() {
     if (!roomId) return;
-    navigator.clipboard.writeText(publicPageUrl('/chat', { room: roomId })).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    const link = publicPageUrl('/chat', { room: roomId });
+    // The clipboard can be missing (insecure context) or refused (no permission, no focus).
+    void Promise.resolve()
+      .then(() => navigator.clipboard.writeText(link))
+      .then(
+        () => setCopyResult('copied'),
+        () => setCopyResult('failed'),
+      )
+      .finally(() => setTimeout(() => setCopyResult(null), 2000));
   }
 
   // Show member control view
@@ -172,11 +177,15 @@ export function ControlPanel({
               onClick={copyRoomId}
               className="flex items-center gap-1 rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[var(--text-soft)] transition-colors hover:bg-[var(--bg-soft)]"
             >
-              {copied ? (
+              {copyResult === 'copied' ? (
                 <>
                   <Check size={14} className="text-[var(--success)]" />
                   <span className="text-[var(--success)]">已复制</span>
                 </>
+              ) : copyResult === 'failed' ? (
+                <span role="alert" className="text-[var(--danger)]">
+                  复制失败，请手动复制群号
+                </span>
               ) : (
                 <>
                   <Copy size={14} />

@@ -295,6 +295,52 @@ describe('useRealtimeCall 正常结束', () => {
   });
 });
 
+describe('useRealtimeCall on Android', () => {
+  afterEach(() => {
+    delete (window as Window & { AndroidSystem?: unknown }).AndroidSystem;
+  });
+
+  it('keeps the screen on while the call is connected and releases it on hang-up', async () => {
+    const setKeepScreenOn = vi.fn();
+    (window as Window & { AndroidSystem?: unknown }).AndroidSystem = { setKeepScreenOn };
+    realtimeMocks.createSession.mockResolvedValue(realtimeSession(async () => undefined));
+    const { result, unmount } = renderHook(() =>
+      useRealtimeCall(minimalDeviceSession(), createDefaultSettings()),
+    );
+
+    await act(async () => result.current.startCall());
+    expect(setKeepScreenOn).not.toHaveBeenCalled();
+    const options = realtimeMocks.createSession.mock.calls[0]?.[0] as RealtimeSessionOptions;
+    act(() => options.events.onOpen?.());
+    expect(setKeepScreenOn).toHaveBeenLastCalledWith(true);
+
+    await act(async () => result.current.hangUp());
+    expect(setKeepScreenOn).toHaveBeenLastCalledWith(false);
+    unmount();
+    expect(setKeepScreenOn).toHaveBeenCalledTimes(2);
+  });
+
+  it('turns a refused microphone into guidance with the settings action', async () => {
+    (window as Window & { AndroidSystem?: unknown }).AndroidSystem = {
+      getMediaPermissionStatus: () => 'blocked',
+      openAppSettings: vi.fn(),
+    };
+    realtimeMocks.createSession.mockResolvedValue(
+      realtimeSession(async () => {
+        throw new DOMException('Permission denied', 'NotAllowedError');
+      }),
+    );
+    const { result } = renderHook(() =>
+      useRealtimeCall(minimalDeviceSession(), createDefaultSettings()),
+    );
+
+    await act(async () => result.current.startCall());
+    expect(result.current.state.status).toBe('idle');
+    expect(result.current.state.error).toContain('麦克风权限已被拒绝');
+    expect(result.current.state.errorOpensAppSettings).toBe(true);
+  });
+});
+
 it('starts the managed service without an API key, using the account voice', async () => {
   const settings = { ...createDefaultSettings(), voice: 'rex' };
   realtimeMocks.createSession.mockResolvedValue(realtimeSession(async () => undefined));

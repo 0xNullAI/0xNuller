@@ -7,14 +7,18 @@ function respond(body: unknown, status = 200): Response {
   return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
 }
 
-function setup(begin: Record<string, unknown>, files: Record<string, string> = {}) {
+function setup(
+  begin: Record<string, unknown>,
+  files: Record<string, string> = {},
+  native: Record<string, unknown> = {},
+) {
   const calls: { cmd: string; args: unknown; options: unknown }[] = [];
   const invoke = vi.fn(async (cmd: string, args?: unknown, options?: unknown) => {
     calls.push({ cmd, args, options });
     if (cmd === 'ota_begin') return { missing: [], reloadRequired: false, ...begin };
     if (cmd === 'ota_commit') return { buildId: 'b2', version: '7.1.1', notes: '修复' };
     if (cmd === 'ota_status')
-      return { nativeApi: 1, embeddedVersion: '7.1.0', active: null, pending: null };
+      return { nativeApi: 1, embeddedVersion: '7.1.0', active: null, pending: null, ...native };
     return null;
   });
   const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
@@ -64,6 +68,18 @@ describe('OtaUpdater', () => {
       expect(updater.getStatus().phase).toBe('idle');
       expect(calls.some((call) => call.cmd === 'ota_write')).toBe(false);
     }
+  });
+
+  it('fetches nothing when native hot updates are off for this run', async () => {
+    const { updater, calls, fetchImpl } = setup(
+      { action: 'download', buildId: 'b2', version: '7.2.0' },
+      {},
+      { available: false },
+    );
+    await updater.check();
+    expect(updater.getStatus().phase).toBe('idle');
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(calls.some((call) => call.cmd === 'ota_begin')).toBe(false);
   });
 
   it('does not commit a partial download', async () => {

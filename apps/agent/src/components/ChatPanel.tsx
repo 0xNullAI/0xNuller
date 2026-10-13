@@ -65,6 +65,12 @@ import type { TraceFeedItem } from '../utils/trace-feed.js';
 import { MediaJobPreview, mediaKindName } from './CompanionMediaPanel.js';
 import { VoiceTranscriptionControl } from './VoiceTranscriptionControl.js';
 import { DeviceConsentBar } from './DeviceConsentBar.js';
+import {
+  canOpenAppSettings,
+  explainMediaFailure,
+  MediaPermissionDeniedError,
+  openAppSettings,
+} from '@0xnullai/native';
 
 interface ChatPanelProps {
   accountId: string | null;
@@ -218,9 +224,13 @@ export function ChatPanel({
   const [attachmentErrorState, setAttachmentErrorState] = useState<{
     owner: string;
     message: string;
+    /** A refused microphone permission; offer the App's system settings. */
+    opensAppSettings?: boolean;
   } | null>(null);
   const attachmentError =
     attachmentErrorState?.owner === mediaOwner ? attachmentErrorState.message : null;
+  const attachmentErrorOpensSettings =
+    attachmentErrorState?.owner === mediaOwner && attachmentErrorState.opensAppSettings === true;
   const [attachmentBusyOwner, setAttachmentBusyOwner] = useState<string | null>(null);
   const attachmentBusy = attachmentBusyOwner !== null && attachmentBusyOwner === mediaOwner;
   const [recordingOwner, setRecordingOwner] = useState<string | null>(null);
@@ -404,8 +414,18 @@ export function ChatPanel({
       recorderRef.current = recorder;
       recorder.start();
       setRecordingOwner(owner);
-    } catch {
-      if (mediaOwner) setAttachmentErrorState({ owner: mediaOwner, message: '无法使用麦克风' });
+    } catch (error) {
+      const explained = explainMediaFailure('microphone', error);
+      if (mediaOwner)
+        setAttachmentErrorState(
+          explained instanceof MediaPermissionDeniedError
+            ? {
+                owner: mediaOwner,
+                message: explained.message,
+                opensAppSettings: canOpenAppSettings(),
+              }
+            : { owner: mediaOwner, message: '无法使用麦克风' },
+        );
     }
   }
 
@@ -890,9 +910,17 @@ export function ChatPanel({
               </div>
             )}
             {attachmentError && (
-              <p role="alert" className="px-2 text-xs text-[var(--danger)]">
-                {attachmentError}
-              </p>
+              <div
+                role="alert"
+                className="flex flex-wrap items-center gap-2 px-2 text-xs text-[var(--danger)]"
+              >
+                <p className="min-w-0 flex-1">{attachmentError}</p>
+                {attachmentErrorOpensSettings && (
+                  <Button size="sm" variant="secondary" onClick={() => openAppSettings()}>
+                    去设置
+                  </Button>
+                )}
+              </div>
             )}
             <div className="flex items-end gap-1.5">
               <input

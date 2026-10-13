@@ -15,9 +15,10 @@
  *
  * This difference bit for real in managed voice: `buildWsUrl` composed a
  * same-origin wss from `location.host` — fine on the web, but on a phone it
- * dialed `wss://tauri.localhost/api/realtime`. And Android has no hot
- * update, so the broken build would have lived on users' phones for a long
- * time.
+ * dialed `wss://tauri.localhost/api/realtime`. A hot update can replace
+ * the UI now, but phones still run the UI inside their APK until the update
+ * arrives (and older APKs only accept bundles for their native layer), so a
+ * wrong origin still reaches users.
  */
 
 const PRODUCTION_ORIGIN = 'https://0xnullai.com';

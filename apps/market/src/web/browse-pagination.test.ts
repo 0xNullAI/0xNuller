@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
+import type * as SettingsModule from '@0xnullai/settings';
 import { afterEach, expect, it, vi } from 'vitest';
 import { fetchBrowsePage, fetchItems } from './api';
 import { appendBrowsePage } from './browse-pages';
 import type { MarketItem } from '../shared/schema';
 
-vi.mock('@0xnullai/settings', () => ({ apiBaseUrl: () => '' }));
+vi.mock('@0xnullai/settings', async (importOriginal) => ({
+  ...(await importOriginal<typeof SettingsModule>()),
+  apiBaseUrl: () => '',
+}));
 
 afterEach(() => vi.unstubAllGlobals());
 

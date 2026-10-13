@@ -24,9 +24,9 @@ export interface TauriUpdateCheckerOptions {
    * `releases/latest` returns is more often than not something other than the
    * APK. Splitting those tags on dots yields a non-numeric first segment, which
    * is read as 0, so the comparison always comes out as "no update" — the
-   * Android update prompt silently stops working, and since Android has no hot
-   * updates the user stays on the old version indefinitely, with no error
-   * anywhere to signal that something went wrong.
+   * Android update prompt silently stops working. Hot updates only replace the
+   * UI, so a user who misses an APK release stays on the old native layer
+   * indefinitely, with no error anywhere to signal that something went wrong.
    */
   tagPrefix?: string;
   pollIntervalMs?: number;

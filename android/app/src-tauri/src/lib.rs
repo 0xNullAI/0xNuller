@@ -30,14 +30,9 @@ impl<R: Runtime> Assets<R> for OtaAssets<R> {
                     dir.is_ok(),
                     key.is_ok()
                 );
-                // An unusable directory still answers status calls, with no bundle.
-                OtaStore::boot(
-                    std::env::temp_dir().join("ota-unavailable"),
-                    semver::Version::new(u64::MAX, 0, 0),
-                    ota::release_key().unwrap_or_else(|_| {
-                        ed25519_dalek::VerifyingKey::from_bytes(&[0; 32]).expect("zero key")
-                    }),
-                )
+                // Hot updates stay off for this run: the APK's own UI serves,
+                // status reports `available: false`, install commands fail.
+                OtaStore::disabled(embedded)
             }
         };
         let store = Arc::new(store);
@@ -48,9 +43,15 @@ impl<R: Runtime> Assets<R> for OtaAssets<R> {
     fn get(&self, key: &AssetKey) -> Option<Cow<'_, [u8]>> {
         if let Some(store) = self.store.get() {
             if store.active().is_some() {
-                return store
-                    .read_active(key.as_ref())
-                    .map(|(_, bytes)| Cow::Owned(bytes));
+                if let Some((_, bytes)) = store.read_active(key.as_ref()) {
+                    return Some(Cow::Owned(bytes));
+                }
+                // The APK's own page can still be loading its lazy chunks in the moment between
+                // `apply_now` switching bundles and the reload. Content-hashed build output only
+                // ever names one build's files, so serving the APK's copy cannot mix builds.
+                if !is_hashed_build_asset(key.as_ref()) {
+                    return None;
+                }
             }
         }
         self.embedded.get(key)
@@ -188,6 +189,11 @@ pub fn run() {
                 let _ = app.emit("app://paused", ());
             }
         });
+}
+
+/// Vite's content-hashed output (`/assets/<name>-<hash>.<ext>`).
+fn is_hashed_build_asset(key: &str) -> bool {
+    key.trim_start_matches('/').starts_with("assets/")
 }
 
 /// Momentary stand-in while the embedded assets move into [`OtaAssets`].

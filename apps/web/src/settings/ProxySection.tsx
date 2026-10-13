@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Input } from '@0xnullai/ui';
 import { SettingsGroup, SwitchRow } from './settings-list';
 import {
-  isValidHttpProxyBaseUrl,
+  isUsableEndpointUrl,
   loadProxy,
+  onlyHttpsEndpointsAllowed,
   subscribeProxy,
   updateProxy,
   type ProxySettings,
@@ -18,7 +19,8 @@ export function ProxySection() {
     setProxy(updateProxy((prev) => ({ ...prev, ...p })));
   }
 
-  const validUrl = isValidHttpProxyBaseUrl(proxy.httpBaseUrl);
+  const httpsOnly = onlyHttpsEndpointsAllowed();
+  const validUrl = isUsableEndpointUrl(proxy.httpBaseUrl);
 
   return (
     <SettingsGroup
@@ -26,10 +28,14 @@ export function ProxySection() {
       footer={
         proxy.httpBaseUrl.length > 0 && !validUrl ? (
           <span role="alert" className="text-[var(--danger)]">
-            请输入有效的 HTTP 或 HTTPS 地址
+            {httpsOnly
+              ? '安卓应用只能使用 https:// 开头的代理地址'
+              : '请输入有效的 HTTP 或 HTTPS 地址'}
           </span>
         ) : (
-          '开启后，AI 请求经这个反向代理地址转发，仅本设备生效。先填地址，再打开开关。'
+          `开启后，AI 请求经这个反向代理地址转发，仅本设备生效。先填地址，再打开开关。${
+            httpsOnly ? '安卓应用只能使用 https 地址。' : ''
+          }`
         )
       }
     >
@@ -48,10 +54,10 @@ export function ProxySection() {
             const httpBaseUrl = event.target.value;
             patch({
               httpBaseUrl,
-              ...(proxy.enabled && !isValidHttpProxyBaseUrl(httpBaseUrl) ? { enabled: false } : {}),
+              ...(proxy.enabled && !isUsableEndpointUrl(httpBaseUrl) ? { enabled: false } : {}),
             });
           }}
-          placeholder="http://127.0.0.1:8080"
+          placeholder={httpsOnly ? 'https://proxy.example.com' : 'http://127.0.0.1:8080'}
           aria-invalid={proxy.httpBaseUrl.length > 0 && !validUrl}
         />
       </div>

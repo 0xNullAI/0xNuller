@@ -7,6 +7,7 @@ import { SelectedCharacterPortrait } from '@0xnullai/auth/appearance-react';
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Phone, PhoneOff, Radio, ShieldAlert } from 'lucide-react';
 import { Alert, AlertDescription, Badge, Button } from '@0xnullai/ui';
+import { openAppSettings } from '@0xnullai/native';
 import type { RealtimeCallState } from '@voice/hooks/use-realtime-call';
 import { CharacterVoiceField } from './CharacterVoiceField';
 import type { RealtimeTranscriptEntry } from '@voice/lib/realtime/realtime-session';
@@ -92,7 +93,14 @@ function IdleCallView({
 
       {call.error && (
         <Alert variant="destructive" className="mb-3">
-          <AlertDescription>{call.error}</AlertDescription>
+          <AlertDescription>
+            {call.error}
+            {call.errorOpensAppSettings && (
+              <Button size="sm" variant="secondary" onClick={() => openAppSettings()}>
+                去设置
+              </Button>
+            )}
+          </AlertDescription>
         </Alert>
       )}
 

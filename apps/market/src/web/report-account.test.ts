@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type * as SettingsModule from '@0xnullai/settings';
 import { afterEach, expect, it, vi } from 'vitest';
 import {
   fetchCharacterReports,
@@ -17,7 +18,10 @@ vi.mock('@0xnullai/auth', () => ({
     return () => state.listeners.delete(listener);
   },
 }));
-vi.mock('@0xnullai/settings', () => ({ apiBaseUrl: () => '' }));
+vi.mock('@0xnullai/settings', async (importOriginal) => ({
+  ...(await importOriginal<typeof SettingsModule>()),
+  apiBaseUrl: () => '',
+}));
 afterEach(() => {
   vi.unstubAllGlobals();
   state.account = 'a';

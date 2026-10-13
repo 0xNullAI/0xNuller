@@ -10,6 +10,12 @@ import { VoiceConversationHistory } from '@voice/lib/voice-history';
 import { VOICE_MEMORY_SEARCH, withVoiceMemorySearch } from '@voice/lib/voice-memory-tool';
 import { loadScenes, savedPromptKind } from '@0xnullai/scenes';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  canOpenAppSettings,
+  explainMediaFailure,
+  holdScreenAwake,
+  MediaPermissionDeniedError,
+} from '@0xnullai/native';
 import { BrowserPermissionService } from '@0xnullai/permissions';
 import { PolicyEngine, OpossumPolicyEngine, DeviceLifecycleGuard } from '@dg-kit/safety';
 import { createDefaultOpossumPolicyRules, createDefaultPolicyRules } from '@dg-kit/safety';
@@ -46,6 +52,8 @@ export type CallStatus = 'idle' | 'connecting' | 'active' | 'ended';
 export interface RealtimeCallState {
   status: CallStatus;
   error: string | null;
+  /** The error is a refused microphone permission; offer the App's system settings. */
+  errorOpensAppSettings?: boolean;
   historyError?: string | null;
   speaking: boolean;
   /** Full running conversation, appended to as turns complete — not just the latest line. */
@@ -169,6 +177,13 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
   }, [hangUp]);
 
   useEffect(() => () => historyRef.current?.dispose(), []);
+
+  // A call is listened to, not looked at: keep the screen from locking (and Android from
+  // suspending the page) while it is connected. Released on hang-up and unmount.
+  useEffect(() => {
+    if (state.status !== 'active') return;
+    return holdScreenAwake();
+  }, [state.status]);
 
   useEffect(() => {
     const warnForUnsavedSubtitles = (event: BeforeUnloadEvent) => {
@@ -489,10 +504,13 @@ export function useRealtimeCall(deviceSession: DeviceSession, settings: VoiceSet
       pendingSessionRef.current?.disconnect();
       pendingSessionRef.current = null;
       if (generation !== callGenerationRef.current) return;
+      const explained = explainMediaFailure('microphone', error);
       setState((prev) => ({
         ...prev,
         status: 'idle',
-        error: error instanceof Error ? error.message : String(error),
+        error: explained instanceof Error ? explained.message : String(explained),
+        errorOpensAppSettings:
+          explained instanceof MediaPermissionDeniedError && canOpenAppSettings(),
       }));
     }
   }, [deviceSession, hangUp, settings, waveformLibrary]);

@@ -12,10 +12,12 @@
 //! - a bundle replaces the running UI only at the next start (or when the page
 //!   asks to restart into it), and stays on probation until the page confirms
 //!   it rendered; after [`MAX_UNCONFIRMED_BOOTS`] starts without a confirm the
-//!   previous UI comes back and the bundle is never installed again.
+//!   previous UI comes back and the bundle is never installed again;
+//! - a bundle on probation is re-hashed against its signed manifest at every
+//!   start, so a file torn by a power loss never serves.
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, VerifyingKey};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -28,7 +30,7 @@ use std::sync::{Mutex, RwLock};
 /// Bumped whenever the Rust, Kotlin, plugin or permission surface the page
 /// relies on changes. A bundle runs only on the exact native API it was built
 /// for; `scripts/native-fingerprint.mjs` keeps this honest in CI.
-pub const NATIVE_API: u32 = 1;
+pub const NATIVE_API: u32 = 2;
 
 /// The release public key (raw 32 bytes, base64). The private half lives only
 /// in the release pipeline's secrets.
@@ -40,7 +42,6 @@ pub const MAX_UNCONFIRMED_BOOTS: u8 = 3;
 const MANIFEST_SCHEMA: u32 = 1;
 const MAX_FILES: usize = 2_000;
 const MAX_BUNDLE_BYTES: u64 = 40 * 1024 * 1024;
-const MAX_BAD_IDS: usize = 32;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,6 +101,43 @@ struct Slot {
     notes: Option<String>,
 }
 
+/// A build that must never be installed again: revoked by a signed manifest,
+/// rolled back after failed starts, or dropped by a reset.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", from = "BadEntry")]
+struct BadBuild {
+    build_id: String,
+    /// Known once a signed manifest for the build has been seen; lets the
+    /// entry be pruned when the build can no longer qualify anyway.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+}
+
+/// `state.json` from before versions were recorded holds bare build ids.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum BadEntry {
+    Id(String),
+    #[serde(rename_all = "camelCase")]
+    Build {
+        build_id: String,
+        #[serde(default)]
+        version: Option<String>,
+    },
+}
+
+impl From<BadEntry> for BadBuild {
+    fn from(entry: BadEntry) -> Self {
+        match entry {
+            BadEntry::Id(build_id) => Self {
+                build_id,
+                version: None,
+            },
+            BadEntry::Build { build_id, version } => Self { build_id, version },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct State {
@@ -107,7 +145,22 @@ struct State {
     previous: Option<Slot>,
     pending: Option<Slot>,
     #[serde(default)]
-    bad: Vec<String>,
+    bad: Vec<BadBuild>,
+}
+
+impl State {
+    fn is_bad(&self, build_id: &str) -> bool {
+        self.bad.iter().any(|entry| entry.build_id == build_id)
+    }
+}
+
+/// The signed manifest kept beside an installed bundle, so the bundle can be
+/// re-checked file by file before it serves.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManifestRecord {
+    manifest: String,
+    signature: String,
 }
 
 /// What the asset protocol serves while this process runs.
@@ -127,6 +180,7 @@ impl ActiveBundle {
 
 struct Staging {
     manifest: Manifest,
+    record: ManifestRecord,
     dir: PathBuf,
     written: HashSet<String>,
 }
@@ -142,6 +196,10 @@ pub struct BundleInfo {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct OtaStatus {
+    /// `false` when this run could not set hot updates up (no data directory
+    /// or no usable release key): the APK's own UI serves and every install
+    /// command fails with code `unavailable`.
+    pub available: bool,
     pub native_api: u32,
     pub embedded_version: String,
     /// The bundle this process serves; `None` means the APK's own UI.
@@ -176,9 +234,14 @@ pub struct BeginResult {
 pub struct OtaStore {
     root: PathBuf,
     embedded: Version,
-    key: VerifyingKey,
+    /// `None` is the explicit "OTA disabled" mode; there is no stand-in key.
+    key: Option<VerifyingKey>,
     inner: Mutex<Inner>,
     active: RwLock<Option<&'static ActiveBundle>>,
+    /// The bundle the page was loaded from before [`OtaStore::apply_now`]
+    /// switched: still answers for files the new bundle lacks (an old lazy
+    /// chunk requested before the reload lands) until the new page confirms.
+    retiring: RwLock<Option<&'static ActiveBundle>>,
 }
 
 struct Inner {
@@ -193,7 +256,19 @@ pub fn release_key() -> OtaResult<VerifyingKey> {
     let bytes: [u8; 32] = bytes
         .try_into()
         .map_err(|_| OtaError::new("key", "release public key must be 32 bytes"))?;
-    VerifyingKey::from_bytes(&bytes).map_err(|_| OtaError::new("key", "invalid release key"))
+    let key = VerifyingKey::from_bytes(&bytes)
+        .map_err(|_| OtaError::new("key", "invalid release key"))?;
+    if key.is_weak() {
+        return Err(OtaError::new("key", "release key is a weak point"));
+    }
+    Ok(key)
+}
+
+fn unavailable() -> OtaError {
+    OtaError::new(
+        "unavailable",
+        "hot updates are disabled in this run; the APK's own UI serves",
+    )
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -258,6 +333,16 @@ pub fn inline_script_hashes(html: &str) -> Vec<String> {
     hashes
 }
 
+/// Makes renames and new entries in `dir` survive a power loss. Android and
+/// Linux need this on top of the file's own fsync; elsewhere it is a no-op.
+fn sync_dir(dir: &Path) -> OtaResult<()> {
+    #[cfg(unix)]
+    fs::File::open(dir)?.sync_all()?;
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
+}
+
 fn write_atomic(path: &Path, bytes: &[u8]) -> OtaResult<()> {
     let tmp = path.with_extension("tmp");
     {
@@ -266,6 +351,9 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> OtaResult<()> {
         file.sync_all()?;
     }
     fs::rename(&tmp, path)?;
+    if let Some(parent) = path.parent() {
+        sync_dir(parent)?;
+    }
     Ok(())
 }
 
@@ -282,16 +370,7 @@ impl Slot {
 impl OtaStore {
     /// Opens the store at process start and decides which UI this run serves.
     pub fn boot(root: PathBuf, embedded: Version, key: VerifyingKey) -> Self {
-        let store = Self {
-            root,
-            embedded,
-            key,
-            inner: Mutex::new(Inner {
-                state: State::default(),
-                staging: None,
-            }),
-            active: RwLock::new(None),
-        };
+        let store = Self::new(root, embedded, Some(key));
         if let Err(error) = store.boot_inner() {
             // Any failure here means the APK's own UI, never a half-read bundle.
             log::error!(
@@ -302,8 +381,37 @@ impl OtaStore {
         store
     }
 
+    /// Hot updates off for this run (no data directory or no usable release
+    /// key): the embedded UI serves, status says `available: false`, and every
+    /// install command fails with code `unavailable`. Nothing touches disk.
+    pub fn disabled(embedded: Version) -> Self {
+        Self::new(PathBuf::new(), embedded, None)
+    }
+
+    fn new(root: PathBuf, embedded: Version, key: Option<VerifyingKey>) -> Self {
+        Self {
+            root,
+            embedded,
+            key,
+            inner: Mutex::new(Inner {
+                state: State::default(),
+                staging: None,
+            }),
+            active: RwLock::new(None),
+            retiring: RwLock::new(None),
+        }
+    }
+
+    fn require_enabled(&self) -> OtaResult<&VerifyingKey> {
+        self.key.as_ref().ok_or_else(unavailable)
+    }
+
     fn bundles_dir(&self) -> PathBuf {
         self.root.join("bundles")
+    }
+
+    fn manifests_dir(&self) -> PathBuf {
+        self.root.join("manifests")
     }
 
     fn staging_root(&self) -> PathBuf {
@@ -318,6 +426,10 @@ impl OtaStore {
         self.bundles_dir().join(build_id)
     }
 
+    fn manifest_path(&self, build_id: &str) -> PathBuf {
+        self.manifests_dir().join(format!("{build_id}.json"))
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner
             .lock()
@@ -326,6 +438,7 @@ impl OtaStore {
 
     fn boot_inner(&self) -> OtaResult<()> {
         fs::create_dir_all(self.bundles_dir())?;
+        fs::create_dir_all(self.manifests_dir())?;
         // A download interrupted by the last exit starts over.
         let _ = fs::remove_dir_all(self.staging_root());
         let mut inner = self.lock();
@@ -333,9 +446,10 @@ impl OtaStore {
             Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
             Err(_) => State::default(),
         };
+        prune_bad(&mut inner.state, &self.embedded);
         promote_pending(&mut inner.state);
         while let Some(current) = inner.state.current.clone() {
-            if !self.slot_usable(&current, &inner.state.bad) {
+            if !self.slot_usable(&current, &inner.state) {
                 inner.state.current = inner.state.previous.take();
                 continue;
             }
@@ -345,7 +459,18 @@ impl OtaStore {
                         "OTA bundle {} never confirmed; rolling back",
                         current.build_id
                     );
-                    remember_bad(&mut inner.state, &current.build_id);
+                    remember_bad(&mut inner.state, &current.build_id, Some(&current.version));
+                    inner.state.current = inner.state.previous.take();
+                    continue;
+                }
+                if let Err(error) = self.check_intact(&current) {
+                    // Storage damage, not a bad build: it is not remembered as
+                    // bad, so the next check downloads it again.
+                    log::error!(
+                        "OTA bundle {} failed its integrity check: {}",
+                        current.build_id,
+                        error.message
+                    );
                     inner.state.current = inner.state.previous.take();
                     continue;
                 }
@@ -356,7 +481,7 @@ impl OtaStore {
             break;
         }
         if let Some(previous) = inner.state.previous.clone() {
-            if !self.slot_usable(&previous, &inner.state.bad) {
+            if !self.slot_usable(&previous, &inner.state) {
                 inner.state.previous = None;
             }
         }
@@ -364,16 +489,55 @@ impl OtaStore {
         self.collect_garbage(&inner.state);
         let current = inner.state.current.clone();
         drop(inner);
-        self.activate(current.as_ref());
+        self.activate(current.as_ref(), None);
         Ok(())
     }
 
-    fn slot_usable(&self, slot: &Slot, bad: &[String]) -> bool {
+    fn slot_usable(&self, slot: &Slot, state: &State) -> bool {
         slot.native_api == NATIVE_API
-            && !bad.contains(&slot.build_id)
+            && !state.is_bad(&slot.build_id)
             && Version::parse(&slot.version).is_ok_and(|v| v > self.embedded)
             && valid_build_id(&slot.build_id)
             && self.bundle_dir(&slot.build_id).join("index.html").is_file()
+    }
+
+    /// Re-hashes every file of an installed bundle against the signed manifest
+    /// stored at commit.
+    ///
+    /// Runs only for a bundle that has not confirmed yet (each probation start
+    /// and `apply_now`), so the cost is bounded: at most
+    /// [`MAX_UNCONFIRMED_BOOTS`] + 1 passes over at most [`MAX_BUNDLE_BYTES`]
+    /// per bundle, then never again once the page confirms. A confirmed bundle
+    /// was fsynced and verified before it ever served.
+    fn check_intact(&self, slot: &Slot) -> OtaResult<()> {
+        let record: ManifestRecord = fs::read(self.manifest_path(&slot.build_id))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .ok_or_else(|| OtaError::new("corrupt", "the stored manifest is missing"))?;
+        let manifest = self.verify(&record.manifest, &record.signature)?;
+        if manifest.build_id != slot.build_id
+            || manifest.version != slot.version
+            || manifest.native_api != slot.native_api
+        {
+            return Err(OtaError::new(
+                "corrupt",
+                "the stored manifest is for another build",
+            ));
+        }
+        let dir = self.bundle_dir(&slot.build_id);
+        for file in &manifest.files {
+            let relative = safe_relative(&file.path).expect("verified above");
+            let intact = fs::read(dir.join(relative)).is_ok_and(|bytes| {
+                bytes.len() as u64 == file.size && sha256_hex(&bytes) == file.sha256
+            });
+            if !intact {
+                return Err(OtaError::new(
+                    "corrupt",
+                    format!("{} does not match the manifest", file.path),
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn save(&self, state: &State) -> OtaResult<()> {
@@ -383,23 +547,42 @@ impl OtaStore {
     }
 
     fn collect_garbage(&self, state: &State) {
+        // What this process serves stays on disk until the next start, even if
+        // the state no longer points at it.
+        let serving: Vec<String> = [self.active(), self.retiring()]
+            .into_iter()
+            .flatten()
+            .map(|bundle| bundle.build_id.clone())
+            .collect();
         let keep: HashSet<&str> = [&state.current, &state.previous, &state.pending]
             .into_iter()
             .flatten()
             .map(|slot| slot.build_id.as_str())
+            .chain(serving.iter().map(String::as_str))
             .collect();
-        let Ok(entries) = fs::read_dir(self.bundles_dir()) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            if !keep.contains(name.to_string_lossy().as_ref()) {
-                let _ = fs::remove_dir_all(entry.path());
+        if let Ok(entries) = fs::read_dir(self.bundles_dir()) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                if !keep.contains(name.to_string_lossy().as_ref()) {
+                    let _ = fs::remove_dir_all(entry.path());
+                }
+            }
+        }
+        if let Ok(entries) = fs::read_dir(self.manifests_dir()) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                let id = name.strip_suffix(".json").unwrap_or(&name);
+                if !keep.contains(id) {
+                    let _ = fs::remove_file(entry.path());
+                }
             }
         }
     }
 
-    fn activate(&self, slot: Option<&Slot>) {
+    /// Serves `slot` from now on; `retiring` keeps answering for files the new
+    /// bundle lacks until the page confirms (see [`OtaStore::apply_now`]).
+    fn activate(&self, slot: Option<&Slot>, retiring: Option<&'static ActiveBundle>) {
         let bundle = slot.and_then(|slot| {
             let dir = self.bundle_dir(&slot.build_id);
             let html = fs::read_to_string(dir.join("index.html")).ok()?;
@@ -411,6 +594,10 @@ impl OtaStore {
             })))
         });
         // Each activation leaks one small record; a process sees at most a few.
+        *self
+            .retiring
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = retiring;
         *self
             .active
             .write()
@@ -424,19 +611,37 @@ impl OtaStore {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    fn retiring(&self) -> Option<&'static ActiveBundle> {
+        *self
+            .retiring
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// Reads one file of the active bundle; `None` means "serve the embedded UI".
+    ///
+    /// Right after `apply_now`, a file the new bundle lacks comes from the
+    /// bundle the old page was loaded from, so that page's lazy chunks keep
+    /// loading until it reloads. Vite names chunks by content hash, so a name
+    /// present in both bundles has the same bytes in both.
     pub fn read_active(&self, key: &str) -> Option<(&'static ActiveBundle, Vec<u8>)> {
         let bundle = self.active()?;
         let relative = safe_relative(key.trim_start_matches('/'))?;
-        fs::read(bundle.dir.join(relative))
-            .ok()
-            .map(|bytes| (bundle, bytes))
+        [Some(bundle), self.retiring()]
+            .into_iter()
+            .flatten()
+            .find_map(|bundle| {
+                fs::read(bundle.dir.join(&relative))
+                    .ok()
+                    .map(|bytes| (bundle, bytes))
+            })
     }
 
     pub fn status(&self) -> OtaStatus {
         let inner = self.lock();
         let active = self.active();
         OtaStatus {
+            available: self.key.is_some(),
             native_api: NATIVE_API,
             embedded_version: self.embedded.to_string(),
             active: active.map(|bundle| BundleInfo {
@@ -459,13 +664,15 @@ impl OtaStore {
     }
 
     fn verify(&self, manifest_text: &str, signature: &str) -> OtaResult<Manifest> {
+        let key = self.require_enabled()?;
         let signature = STANDARD
             .decode(signature.trim())
             .map_err(|_| OtaError::new("signature", "signature is not base64"))?;
         let signature = Signature::from_slice(&signature)
             .map_err(|_| OtaError::new("signature", "signature has the wrong length"))?;
-        self.key
-            .verify(manifest_text.as_bytes(), &signature)
+        // Strict: rejects weak keys and non-canonical / small-order signatures
+        // that plain `verify` would let through.
+        key.verify_strict(manifest_text.as_bytes(), &signature)
             .map_err(|_| OtaError::new("signature", "manifest signature does not verify"))?;
         let manifest: Manifest = serde_json::from_str(manifest_text)
             .map_err(|error| OtaError::new("manifest", error.to_string()))?;
@@ -516,13 +723,28 @@ impl OtaStore {
             return Ok(result(BeginAction::NativeMismatch, Vec::new()));
         }
         let version = Version::parse(&manifest.version).expect("verified above");
+        if inner.state.is_bad(&manifest.build_id) {
+            // The signed manifest tells us the build's version, which lets the
+            // entry be pruned once an APK update makes it moot.
+            let entry = inner
+                .state
+                .bad
+                .iter_mut()
+                .find(|entry| entry.build_id == manifest.build_id && entry.version.is_none());
+            if let Some(entry) = entry {
+                entry.version = Some(manifest.version.clone());
+                self.save(&inner.state)?;
+            }
+            inner.staging = None;
+            return Ok(result(BeginAction::UpToDate, Vec::new()));
+        }
         let installed = [&inner.state.current, &inner.state.pending]
             .into_iter()
             .flatten()
             .filter_map(|slot| Version::parse(&slot.version).ok())
             .max();
         let newest = installed.map_or(self.embedded.clone(), |v| v.max(self.embedded.clone()));
-        if version <= newest || inner.state.bad.contains(&manifest.build_id) {
+        if version <= newest {
             inner.staging = None;
             return Ok(result(BeginAction::UpToDate, Vec::new()));
         }
@@ -551,6 +773,10 @@ impl OtaStore {
             }
             inner.staging = Some(Staging {
                 manifest: manifest.clone(),
+                record: ManifestRecord {
+                    manifest: manifest_text.to_string(),
+                    signature: signature.to_string(),
+                },
                 dir,
                 written,
             });
@@ -571,22 +797,28 @@ impl OtaStore {
         }
         let mut changed = false;
         for id in revoked {
-            if valid_build_id(id) && !state.bad.contains(id) {
-                remember_bad(state, id);
+            if valid_build_id(id) && !state.is_bad(id) {
+                // The installed slot, if any, knows the revoked build's version.
+                let version = [&state.current, &state.previous, &state.pending]
+                    .into_iter()
+                    .flatten()
+                    .find(|slot| &slot.build_id == id)
+                    .map(|slot| slot.version.clone());
+                remember_bad(state, id, version.as_deref());
                 changed = true;
             }
         }
         if state
             .pending
             .as_ref()
-            .is_some_and(|slot| state.bad.contains(&slot.build_id))
+            .is_some_and(|slot| state.is_bad(&slot.build_id))
         {
             state.pending = None;
         }
         if state
             .previous
             .as_ref()
-            .is_some_and(|slot| state.bad.contains(&slot.build_id))
+            .is_some_and(|slot| state.is_bad(&slot.build_id))
         {
             state.previous = None;
         }
@@ -594,7 +826,7 @@ impl OtaStore {
         if state
             .current
             .as_ref()
-            .is_some_and(|slot| state.bad.contains(&slot.build_id))
+            .is_some_and(|slot| state.is_bad(&slot.build_id))
         {
             state.current = state.previous.take();
             reload = true;
@@ -604,13 +836,15 @@ impl OtaStore {
         }
         if reload {
             let current = state.current.clone();
-            self.activate(current.as_ref());
+            // A revoked bundle stops answering at once, even for old chunks.
+            self.activate(current.as_ref(), None);
         }
         Ok(reload)
     }
 
     /// Stores one downloaded file after checking it against the manifest.
     pub fn write(&self, build_id: &str, path: &str, bytes: &[u8]) -> OtaResult<()> {
+        self.require_enabled()?;
         let mut inner = self.lock();
         let staging = inner
             .staging
@@ -636,16 +870,23 @@ impl OtaStore {
     }
 
     /// Finishes the download: the bundle becomes pending for the next start.
+    ///
+    /// Order matters for power loss: every file and directory of the bundle is
+    /// fsynced, then the bundle is renamed into place, then its signed
+    /// manifest is stored, and only then does `state.json` name it pending.
     pub fn commit(&self, build_id: &str) -> OtaResult<BundleInfo> {
+        self.require_enabled()?;
         let mut inner = self.lock();
         let staging = inner
             .staging
             .take()
             .filter(|staging| staging.manifest.build_id == build_id)
             .ok_or_else(|| OtaError::new("staging", "no download in progress for this build"))?;
+        let mut dirs = HashSet::new();
         for file in &staging.manifest.files {
             let relative = safe_relative(&file.path).expect("verified above");
-            let bytes = fs::read(staging.dir.join(relative)).map_err(|_| {
+            let path = staging.dir.join(&relative);
+            let bytes = fs::read(&path).map_err(|_| {
                 OtaError::new("staging", format!("{} was not downloaded", file.path))
             })?;
             if bytes.len() as u64 != file.size || sha256_hex(&bytes) != file.sha256 {
@@ -654,12 +895,28 @@ impl OtaStore {
                     format!("{} changed on disk", file.path),
                 ));
             }
+            // Each directory between the file and the bundle root holds a new entry.
+            let mut parent = path.parent();
+            while let Some(dir) = parent.filter(|dir| dir.starts_with(&staging.dir)) {
+                if !dirs.insert(dir.to_path_buf()) {
+                    break;
+                }
+                parent = dir.parent();
+            }
+        }
+        for dir in &dirs {
+            sync_dir(dir)?;
         }
         let target = self.bundle_dir(build_id);
         let _ = fs::remove_dir_all(&target);
         fs::create_dir_all(self.bundles_dir())?;
         fs::rename(&staging.dir, &target)?;
+        sync_dir(&self.bundles_dir())?;
         let _ = fs::remove_dir_all(self.staging_root());
+        fs::create_dir_all(self.manifests_dir())?;
+        let record = serde_json::to_vec(&staging.record)
+            .map_err(|error| OtaError::new("state", error.to_string()))?;
+        write_atomic(&self.manifest_path(build_id), &record)?;
         let slot = Slot {
             build_id: staging.manifest.build_id.clone(),
             version: staging.manifest.version.clone(),
@@ -675,20 +932,33 @@ impl OtaStore {
     }
 
     /// Switches this process to the pending bundle; the page reloads itself next.
+    ///
+    /// The page that asked is still loaded from the old bundle until that
+    /// reload, so the old bundle keeps answering for files the new one lacks
+    /// (see [`OtaStore::read_active`]) until the new page confirms.
     pub fn apply_now(&self) -> OtaResult<bool> {
+        self.require_enabled()?;
         let mut inner = self.lock();
-        if inner.state.pending.is_none() {
+        let Some(pending) = inner.state.pending.clone() else {
             return Ok(false);
+        };
+        // The pending bundle may come from an earlier run that lost power.
+        if let Err(error) = self.check_intact(&pending) {
+            inner.state.pending = None;
+            self.save(&inner.state)?;
+            self.collect_garbage(&inner.state);
+            return Err(error);
         }
         promote_pending(&mut inner.state);
         if let Some(slot) = inner.state.current.as_mut() {
             slot.attempts = 1; // This run counts as its first start.
         }
         self.save(&inner.state)?;
-        self.collect_garbage(&inner.state);
         let current = inner.state.current.clone();
+        // Activate before collecting garbage, so the retiring bundle is kept.
+        self.activate(current.as_ref(), self.active());
+        self.collect_garbage(&inner.state);
         drop(inner);
-        self.activate(current.as_ref());
         Ok(true)
     }
 
@@ -704,6 +974,11 @@ impl OtaStore {
         if slot.build_id != build_id || !running {
             return Ok(false);
         }
+        // The page now runs from the new bundle; the old one stops answering.
+        *self
+            .retiring
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
         if !slot.confirmed {
             slot.confirmed = true;
             slot.attempts = 0;
@@ -714,39 +989,43 @@ impl OtaStore {
 
     /// Drops every installed bundle; the APK's own UI serves after a reload.
     pub fn reset(&self) -> OtaResult<()> {
+        self.require_enabled()?;
         let mut inner = self.lock();
-        let bad = std::mem::take(&mut inner.state.bad);
-        let mut bad = bad;
+        let mut state = State {
+            bad: std::mem::take(&mut inner.state.bad),
+            ..State::default()
+        };
+        // A reset bundle must not come straight back on the next check.
         for slot in [&inner.state.current, &inner.state.pending]
             .into_iter()
             .flatten()
         {
-            if !bad.contains(&slot.build_id) {
-                bad.push(slot.build_id.clone());
-            }
+            remember_bad(&mut state, &slot.build_id, Some(&slot.version));
         }
-        // A reset bundle must not come straight back on the next check.
-        inner.state = State {
-            bad,
-            ..State::default()
-        };
+        inner.state = state;
         inner.staging = None;
         let _ = fs::remove_dir_all(self.staging_root());
         self.save(&inner.state)?;
+        self.activate(None, None);
         self.collect_garbage(&inner.state);
         drop(inner);
-        self.activate(None);
         Ok(())
     }
 }
 
+/// Writes one bundle file durably: its bytes are fsynced before the rename,
+/// and [`OtaStore::commit`] fsyncs the directories before the bundle counts.
 fn write_file(dir: &Path, relative: &Path, bytes: &[u8]) -> OtaResult<()> {
     let target = dir.join(relative);
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }
     let tmp = target.with_extension("part");
-    fs::write(&tmp, bytes)?;
+    {
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
     fs::rename(&tmp, &target)?;
     Ok(())
 }
@@ -763,12 +1042,41 @@ fn promote_pending(state: &mut State) {
     state.current = Some(pending);
 }
 
-fn remember_bad(state: &mut State, build_id: &str) {
-    if !state.bad.iter().any(|id| id == build_id) {
-        state.bad.push(build_id.to_string());
+/// Never forgets a build on its own: entries leave only through
+/// [`prune_bad`], once the build could not be installed anyway. The list only
+/// grows from signed revocations and this device's own failed or reset
+/// installs, so its size follows the release history, not an attacker.
+fn remember_bad(state: &mut State, build_id: &str, version: Option<&str>) {
+    match state
+        .bad
+        .iter_mut()
+        .find(|entry| entry.build_id == build_id)
+    {
+        Some(entry) => {
+            if entry.version.is_none() {
+                entry.version = version.map(str::to_string);
+            }
+        }
+        None => state.bad.push(BadBuild {
+            build_id: build_id.to_string(),
+            version: version.map(str::to_string),
+        }),
     }
-    let overflow = state.bad.len().saturating_sub(MAX_BAD_IDS);
-    state.bad.drain(..overflow);
+}
+
+/// Drops entries for builds no newer than the embedded UI: `begin` and
+/// `slot_usable` refuse those regardless, and the embedded version only rises
+/// (with an APK update). The floor is deliberately not the installed bundle's
+/// version, which can fall again on a rollback or revocation. Entries whose
+/// version is unknown are kept.
+fn prune_bad(state: &mut State, embedded: &Version) {
+    state.bad.retain(|entry| {
+        entry
+            .version
+            .as_deref()
+            .and_then(|version| Version::parse(version).ok())
+            .is_none_or(|version| version > *embedded)
+    });
 }
 
 #[cfg(test)]
@@ -807,7 +1115,17 @@ mod tests {
     }
 
     fn release(version: &str, build_id: &str, native_api: u32, revoked: &[&str]) -> Release {
-        let files = vec![
+        release_with(version, build_id, native_api, revoked, &[])
+    }
+
+    fn release_with(
+        version: &str,
+        build_id: &str,
+        native_api: u32,
+        revoked: &[&str],
+        extra: &[(&str, &[u8])],
+    ) -> Release {
+        let mut files = vec![
             (
                 "index.html".to_string(),
                 format!("<html><script>var v='{version}'</script><script src=\"/assets/app.js\"></script></html>")
@@ -816,6 +1134,11 @@ mod tests {
             ("assets/app.js".to_string(), format!("console.log('{version}')").into_bytes()),
             ("assets/shared.css".to_string(), b"body{}".to_vec()),
         ];
+        files.extend(
+            extra
+                .iter()
+                .map(|(path, bytes)| (path.to_string(), bytes.to_vec())),
+        );
         let entries: Vec<_> = files
             .iter()
             .map(|(path, bytes)| {
@@ -1034,6 +1357,177 @@ mod tests {
             })
             .collect();
         assert_eq!(inline_script_hashes(html), expected);
+    }
+
+    fn corrupt(root: &Path, build_id: &str) {
+        fs::write(
+            root.join("bundles").join(build_id).join("assets/app.js"),
+            b"torn",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_torn_bundle_on_probation_never_serves_and_downloads_again() {
+        let root = temp_root("torn");
+        install(&store(&root), &release("7.1.1", "b1", NATIVE_API, &[]));
+        assert!(root.join("manifests/b1.json").is_file());
+        corrupt(&root, "b1");
+        let booted = store(&root);
+        assert_eq!(served(&booted), None);
+        // Storage damage is not a bad build: the next check fetches it again.
+        let again = install(&booted, &release("7.1.1", "b1", NATIVE_API, &[]));
+        assert_eq!(again.action, BeginAction::Download);
+        assert_eq!(
+            served(&store(&root)).as_deref(),
+            Some("console.log('7.1.1')")
+        );
+    }
+
+    #[test]
+    fn a_torn_bundle_falls_back_to_the_last_confirmed_one() {
+        let root = temp_root("torn-previous");
+        install(&store(&root), &release("7.1.1", "good", NATIVE_API, &[]));
+        store(&root).confirm("good").unwrap();
+        install(&store(&root), &release("7.1.2", "next", NATIVE_API, &[]));
+        corrupt(&root, "next");
+        assert_eq!(
+            served(&store(&root)).as_deref(),
+            Some("console.log('7.1.1')")
+        );
+    }
+
+    #[test]
+    fn a_bundle_without_its_signed_manifest_does_not_serve() {
+        let root = temp_root("no-manifest");
+        install(&store(&root), &release("7.1.1", "b1", NATIVE_API, &[]));
+        fs::remove_file(root.join("manifests/b1.json")).unwrap();
+        assert_eq!(served(&store(&root)), None);
+    }
+
+    #[test]
+    fn apply_now_refuses_a_torn_pending_bundle() {
+        let root = temp_root("torn-apply");
+        let running = store(&root);
+        install(&running, &release("7.1.1", "b1", NATIVE_API, &[]));
+        corrupt(&root, "b1");
+        assert_eq!(running.apply_now().unwrap_err().code, "corrupt");
+        assert_eq!(served(&running), None);
+        assert_eq!(running.status().pending, None);
+        assert_eq!(served(&store(&root)), None);
+    }
+
+    #[test]
+    fn a_disabled_store_serves_the_embedded_ui_and_refuses_installs() {
+        let disabled = OtaStore::disabled(Version::parse("7.1.0").unwrap());
+        let status = disabled.status();
+        assert!(!status.available);
+        assert_eq!(status.embedded_version, "7.1.0");
+        assert_eq!(status.active, None);
+        let good = release("7.1.1", "b1", NATIVE_API, &[]);
+        let code = |result: OtaResult<()>| result.unwrap_err().code;
+        assert_eq!(
+            code(disabled.begin(&good.text, &good.signature).map(drop)),
+            "unavailable"
+        );
+        assert_eq!(
+            code(disabled.write("b1", "index.html", b"x")),
+            "unavailable"
+        );
+        assert_eq!(code(disabled.commit("b1").map(drop)), "unavailable");
+        assert_eq!(code(disabled.apply_now().map(drop)), "unavailable");
+        assert_eq!(code(disabled.reset()), "unavailable");
+        assert!(!disabled.confirm("b1").unwrap());
+        assert!(disabled.read_active("/index.html").is_none());
+        assert!(store(&temp_root("enabled")).status().available);
+    }
+
+    #[test]
+    fn signatures_are_checked_strictly() {
+        use ed25519_dalek::Verifier;
+        // The identity point as a public key, with R = identity and s = 0,
+        // satisfies the plain verification equation for every message.
+        let mut identity = [0u8; 32];
+        identity[0] = 1;
+        let weak = VerifyingKey::from_bytes(&identity).unwrap();
+        let mut forged = [0u8; 64];
+        forged[0] = 1;
+        let forged = Signature::from_bytes(&forged);
+        let good = release("7.1.1", "b1", NATIVE_API, &[]);
+        assert!(weak.verify(good.text.as_bytes(), &forged).is_ok());
+
+        let root = temp_root("strict");
+        let store = OtaStore::boot(root, Version::parse("7.1.0").unwrap(), weak);
+        let signature = STANDARD.encode(forged.to_bytes());
+        assert_eq!(
+            store.begin(&good.text, &signature).unwrap_err().code,
+            "signature"
+        );
+    }
+
+    #[test]
+    fn revoked_builds_are_not_forgotten_past_the_old_cap() {
+        let root = temp_root("many-bad");
+        let ids: Vec<String> = (0..40).map(|i| format!("r{i}")).collect();
+        let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+        install(&store(&root), &release("7.1.1", "fix", NATIVE_API, &ids));
+        let rebooted = store(&root);
+        for id in ["r0", "r39"] {
+            let replay = install(&rebooted, &release("7.9.0", id, NATIVE_API, &[]));
+            assert_eq!(replay.action, BeginAction::UpToDate, "{id}");
+        }
+    }
+
+    #[test]
+    fn bad_builds_are_pruned_only_below_the_embedded_ui() {
+        let root = temp_root("prune");
+        fs::create_dir_all(&root).unwrap();
+        // Legacy state: bare build ids next to versioned entries.
+        fs::write(
+            root.join("state.json"),
+            r#"{"current":null,"previous":null,"pending":null,"bad":["legacy",{"buildId":"old","version":"7.1.1"},{"buildId":"new","version":"7.3.0"}]}"#,
+        )
+        .unwrap();
+        let newer_apk = OtaStore::boot(
+            root.clone(),
+            Version::parse("7.2.0").unwrap(),
+            signer().verifying_key(),
+        );
+        let state: State =
+            serde_json::from_slice(&fs::read(root.join("state.json")).unwrap()).unwrap();
+        let kept: Vec<&str> = state.bad.iter().map(|b| b.build_id.as_str()).collect();
+        assert_eq!(kept, ["legacy", "new"]);
+        for id in ["legacy", "new"] {
+            let replay = install(&newer_apk, &release("7.4.0", id, NATIVE_API, &[]));
+            assert_eq!(replay.action, BeginAction::UpToDate, "{id}");
+        }
+    }
+
+    #[test]
+    fn apply_now_keeps_the_old_pages_chunks_until_the_new_page_confirms() {
+        let root = temp_root("apply-chunks");
+        let first = release_with(
+            "7.1.1",
+            "a",
+            NATIVE_API,
+            &[],
+            &[("assets/chunk-a.js", b"a")],
+        );
+        install(&store(&root), &first);
+        // "a" is still on probation, so the state alone would not keep it.
+        let running = store(&root);
+        install(&running, &release("7.1.2", "b", NATIVE_API, &[]));
+        assert!(running.apply_now().unwrap());
+        let index = running.read_active("/index.html").unwrap().1;
+        assert!(String::from_utf8(index).unwrap().contains("7.1.2"));
+        assert_eq!(served(&running).as_deref(), Some("console.log('7.1.2')"));
+        assert_eq!(running.read_active("/assets/chunk-a.js").unwrap().1, b"a");
+        assert!(root.join("bundles/a").is_dir());
+
+        assert!(running.confirm("b").unwrap());
+        assert!(running.read_active("/assets/chunk-a.js").is_none());
+        store(&root);
+        assert!(!root.join("bundles/a").exists());
     }
 
     #[test]
