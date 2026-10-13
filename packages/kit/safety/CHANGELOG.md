@@ -1,5 +1,17 @@
 # @dg-kit/safety
 
+## 1.17.0
+
+### Minor Changes
+
+- 2616514: `DeviceLifecycleGuard` accepts an optional `keepInBackground` policy and `onBackgroundKept` callback. Without them it still stops output whenever the page hides; leaving the page always stops.
+
+### Patch Changes
+
+- Updated dependencies [2616514]
+  - @dg-kit/protocol@1.17.0
+  - @dg-kit/core@1.17.0
+
 ## 1.16.6
 
 ### Patch Changes
