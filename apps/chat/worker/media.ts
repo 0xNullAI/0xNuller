@@ -57,7 +57,7 @@ export async function handleMediaUpload(
     // no WebSocket disconnect exists to schedule RoomDO's orphan sweep. Tell the
     // room about every successful object write so an otherwise-idle room still
     // reconciles its R2 prefix after the grace window.
-    await room.noteMediaUpload(code, mediaToken);
+    await room.noteMediaUpload(code, mediaToken, id);
   } catch {
     // Without a scheduled sweep this object has no guaranteed cleanup path.
     await env.MEDIA.delete(key);
